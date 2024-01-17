@@ -1,0 +1,413 @@
+---
+title: "Data Analysis of Departure Delays for United Airlines"
+author: "Vivek Reddy Karra"
+date: "2023-10-23"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(tidyr) 
+library(nycflights13)
+```
+
+```{r}
+data("flights")
+data("weather")
+```
+
+
+
+```{r}
+flights_weather_joined <- flights %>%
+  inner_join(weather, by = c("year", "month", "day", "hour", "origin"))
+glimpse(flights_weather_joined)
+```
+```{r}
+UA_flights <- flights_weather_joined %>% 
+  filter(carrier=="UA")%>%
+  filter(!is.na(dep_delay))%>%
+  filter(!is.na(temp))%>%
+  filter(!is.na(wind_speed))
+```
+
+
+```{r}
+
+table <- cbind(
+summary(UA_flights$dep_delay),
+summary(UA_flights$hour),
+summary(UA_flights$temp),
+summary(UA_flights$wind_speed),
+summary(UA_flights$precip),
+summary(UA_flights$visib))
+
+columns <- c("dep_delay", "hour", "temp", "wind_speed", "precip", "visib")
+colnames(table)<- columns
+data.frame(table)
+```
+
+```{r}
+new_df <- UA_flights %>%
+  mutate(                         #mutate is used for creating new variables in dataset
+    late = dep_delay > 0 ,         
+    very_late = dep_delay > 30,
+    
+    time_of_day = case_when(
+      hour>=5 & hour<12 ~ "Morning",
+      hour>=12 & hour<17 ~ "Noon",
+      hour>=17 & hour<20 ~"Evening",
+      TRUE ~ "Night"
+    ),
+    
+         time_of_year = case_when(
+           month %in% c(3, 4, 5) ~ "Spring",
+           month %in% c(6, 7, 8) ~ "Summer",
+           month %in% c(9, 10, 11) ~ "Fall",
+           month %in% c(12, 1, 2) ~ "Winter"
+         ),
+    
+    temperature = case_when(
+    temp < 55 ~ "Cold",
+    temp >= 55 & temp < 85 ~ "Mild",
+    temp >= 85 ~ "Hot"
+  ),
+    
+    wind_speeds = case_when(
+    wind_speed < 30 ~ "Low",
+    wind_speed >= 30 ~ "Strong"
+  ),
+  
+  precipitation = case_when(
+    precip<=0 ~ "Non-rain",
+    precip>0 ~ "Raining"
+  ),
+  
+  visibility = case_when(
+    visib< 5.0 ~ "0 to 4m",
+    visib>=5 ~ "5 to 10m"
+  )
+  
+  )
+    
+```
+
+
+```{r}
+
+summary(new_df$dep_delay)
+summary(new_df$hour)
+summary(new_df$month)
+summary(new_df$temp)
+summary(new_df$wind_speed)
+summary(new_df$precip)
+summary(new_df$visib)
+```
+
+
+```{r}
+ggplot(data = new_df, mapping=aes(x=dep_delay))+
+  geom_histogram(color="white", fill="orange")
+```
+
+
+
+
+```{r}
+#time of day vs dep_delay
+
+ggplot(data = new_df, mapping = aes(x = time_of_day, fill = late)) +
+  geom_bar()
+
+ggplot(data = new_df, mapping = aes(x = time_of_day, fill = very_late)) +
+  geom_bar()
+
+```
+
+
+
+```{r}
+ggplot(data = new_df, mapping = aes(x = time_of_year, fill = late)) +
+  geom_bar()
+
+ggplot(data = new_df, mapping = aes(x = time_of_year, fill = very_late)) +
+  geom_bar()
+```
+
+
+```{r}
+
+ggplot(data = new_df, mapping = aes(x = temperature, y = dep_delay)) +
+  geom_boxplot()
+```
+
+
+```{r}
+ggplot(data = new_df, mapping = aes(x = wind_speeds, y = dep_delay)) +
+  geom_boxplot()
+```
+
+
+
+```{r}
+ggplot(data = new_df, mapping = aes(x = precipitation, y = dep_delay)) +
+  geom_boxplot()
+
+```
+
+
+```{r}
+ggplot(data = new_df, mapping = aes(x = visibility, y = dep_delay)) +
+  geom_boxplot()
+
+```
+
+
+PERMUTATION TEST
+
+
+```{r}
+hour <- new_df%>% 
+  filter(time_of_day=="Morning" | time_of_day=="Evening")
+
+
+observed_mean_hour <- mean(hour$dep_delay[hour$time_of_day=="Morning"]) -mean(hour$dep_delay[hour$time_of_day=="Evening"])
+observed_mean_hour
+
+
+N <- 10^3-1
+sample.size = nrow(hour)
+group.1.size = nrow(hour[hour$time_of_day=="Morning",])
+result_diff <- numeric(N)
+for(i in 1:N)
+{
+  index = sample(sample.size, size=group.1.size, replace = FALSE)
+  result_diff[i] = mean(hour$dep_delay[index]) - mean(hour$dep_delay[-index])
+}
+
+#plot a histogram of the simulated differences
+#add a vertical line at the observed difference
+ggplot(data=tibble(result_diff), mapping = aes(x=result_diff)) + 
+  geom_histogram() +
+  geom_vline(xintercept = observed_mean_hour, color = "red")
+
+#p-value
+(sum(result_diff <= observed_mean_hour) + 1) / (N + 1)
+```
+
+
+```{r}
+hour2 <- new_df%>% 
+  filter(time_of_day=="Noon" | time_of_day=="Night")
+
+
+observed_mean_hour2 <- mean(hour2$dep_delay[hour2$time_of_day=="Noon"]) -mean(hour2$dep_delay[hour2$time_of_day=="Night"])
+observed_mean_hour2
+
+
+N <- 10^3-1
+sample.size = nrow(hour2)
+group.1.size = nrow(hour2[hour2$time_of_day=="Noon",])
+result_diff <- numeric(N)
+for(i in 1:N)
+{
+  index = sample(sample.size, size=group.1.size, replace = FALSE)
+  result_diff[i] = mean(hour2$dep_delay[index]) - mean(hour2$dep_delay[-index])
+}
+
+#plot a histogram of the simulated differences
+#add a vertical line at the observed difference
+ggplot(data=tibble(result_diff), mapping = aes(x=result_diff)) + 
+  geom_histogram() +
+  geom_vline(xintercept = observed_mean_hour2, color = "red")
+
+#p-value
+(sum(result_diff <= observed_mean_hour2) + 1) / (N + 1)
+```
+
+
+
+
+```{r}
+season <- new_df%>% 
+  filter(time_of_year=="Summer" | time_of_year=="Fall")
+
+
+observed_mean_year <- mean(season$dep_delay[season$time_of_year=="Summer"]) - mean(season$dep_delay[season$time_of_year=="Fall"])
+observed_mean_year
+
+
+N <- 10^3-1
+sample.size = nrow(season)
+group.1.size = nrow(season[season$time_of_year=="Summer",])
+result_diff <- numeric(N)
+for(i in 1:N)
+{
+  index = sample(sample.size, size=group.1.size, replace = FALSE)
+  result_diff[i] = mean(season$dep_delay[index]) - mean(season$dep_delay[-index])
+}
+
+#plot a histogram of the simulated differences
+#add a vertical line at the observed difference
+ggplot(data=tibble(result_diff), mapping = aes(x=result_diff)) + 
+  geom_histogram() +
+  geom_vline(xintercept = observed_mean_year, color = "red")
+
+#p-value
+(sum(result_diff >= observed_mean_year) + 1) / (N + 1)
+```
+
+
+```{r}
+season2 <- new_df%>% 
+  filter(time_of_year=="Spring" | time_of_year=="Winter")
+
+
+observed_mean_year2 <- mean(season2$dep_delay[season2$time_of_year=="Spring"]) - mean(season2$dep_delay[season2$time_of_year=="Winter"])
+observed_mean_year2
+
+
+N <- 10^3-1
+sample.size = nrow(season2)
+group.1.size = nrow(season2[season2$time_of_year=="Spring",])
+result_diff <- numeric(N)
+for(i in 1:N)
+{
+  index = sample(sample.size, size=group.1.size, replace = FALSE)
+  result_diff[i] = mean(season2$dep_delay[index]) - mean(season2$dep_delay[-index])
+}
+
+#plot a histogram of the simulated differences
+#add a vertical line at the observed difference
+ggplot(data=tibble(result_diff), mapping = aes(x=result_diff)) + 
+  geom_histogram() +
+  geom_vline(xintercept = observed_mean_year2, color = "red")
+
+#p-value
+(sum(result_diff >= observed_mean_year2) + 1) / (N + 1)
+```
+
+
+
+```{r}
+windspeed <- new_df%>% 
+  filter(wind_speeds=="Low" | wind_speeds=="Strong")
+
+
+observed_mean_wind <- mean(windspeed$dep_delay[windspeed$wind_speeds=="Low"]) -mean(windspeed$dep_delay[windspeed$wind_speeds=="Strong"])
+observed_mean_wind
+
+
+N <- 10^3-1
+sample.size = nrow(windspeed)
+group.1.size = nrow(windspeed[windspeed$wind_speeds=="Low",])
+result_diff <- numeric(N)
+for(i in 1:N)
+{
+  index = sample(sample.size, size=group.1.size, replace = FALSE)
+  result_diff[i] = mean(windspeed$dep_delay[index]) - mean(windspeed$dep_delay[-index])
+}
+
+#plot a histogram of the simulated differences
+#add a vertical line at the observed difference
+ggplot(data=tibble(result_diff), mapping = aes(x=result_diff)) + 
+  geom_histogram() +
+  geom_vline(xintercept = observed_mean_wind, color = "red")
+
+#p-value
+(sum(result_diff <= observed_mean_wind) + 1) / (N + 1)
+```
+
+
+
+
+```{r}
+temp <- new_df%>% 
+  filter(temperature=="Cold" | temperature=="Hot")
+
+
+observed_mean_temp <- mean(temp$dep_delay[temp$temperature=="Cold"]) - mean(temp$dep_delay[temp$temperature=="Hot"])
+observed_mean_temp
+
+
+N <- 10^3-1
+sample.size = nrow(temp)
+group.1.size = nrow(temp[temp$temperature=="Cold",])
+result_diff <- numeric(N)
+for(i in 1:N)
+{
+  index = sample(sample.size, size=group.1.size, replace = FALSE)
+  result_diff[i] = mean(temp$dep_delay[index]) - mean(temp$dep_delay[-index])
+}
+
+#plot a histogram of the simulated differences
+#add a vertical line at the observed difference
+ggplot(data=tibble(result_diff), mapping = aes(x=result_diff)) + 
+  geom_histogram() +
+  geom_vline(xintercept = observed_mean_temp, color = "red")
+
+#p-value
+(sum(result_diff <= observed_mean_temp) + 1) / (N + 1)
+```
+
+
+
+
+
+
+```{r}
+observed_mean_diff <- mean(new_df$dep_delay[new_df$precipitation=="Non-rain"]) - mean(new_df$dep_delay[new_df$precipitation=="Raining"])
+observed_mean_diff
+
+
+N <- 10^3-1
+sample.size = nrow(new_df)
+group.1.size = nrow(new_df[new_df$precipitation=="Non-rain",])
+result_diff <- numeric(N)
+for(i in 1:N)
+{
+  index = sample(sample.size, size=group.1.size, replace = FALSE)
+  result_diff[i] = mean(new_df$dep_delay[index]) - mean(new_df$dep_delay[-index])
+}
+
+#plot a histogram of the simulated differences
+#add a vertical line at the observed difference
+ggplot(data=tibble(result_diff), mapping = aes(x=result_diff)) + 
+  geom_histogram() +
+  geom_vline(xintercept = observed_mean_diff, color = "red")
+
+#p-value
+(sum(result_diff <= observed_mean_diff) + 1) / (N + 1)
+```
+
+
+```{r}
+observed_mean_visib <- mean(new_df$dep_delay[new_df$visibility=="0 to 4m"]) - mean(new_df$dep_delay[new_df$visibility=="5 to 10m"])
+observed_mean_visib
+
+
+N <- 10^3-1
+sample.size = nrow(new_df)
+group.1.size = nrow(new_df[new_df$visibility=="0 to 4m",])
+result_diff <- numeric(N)
+for(i in 1:N)
+{
+  index = sample(sample.size, size=group.1.size, replace = FALSE)
+  result_diff[i] = mean(new_df$dep_delay[index]) - mean(new_df$dep_delay[-index])
+}
+
+#plot a histogram of the simulated differences
+#add a vertical line at the observed difference
+ggplot(data=tibble(result_diff), mapping = aes(x=result_diff)) + 
+  geom_histogram() +
+  geom_vline(xintercept = observed_mean_visib, color = "red")
+
+#p-value
+(sum(result_diff >= observed_mean_visib) + 1) / (N + 1)
+```
+
+
